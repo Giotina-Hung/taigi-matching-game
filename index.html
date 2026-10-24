@@ -1,0 +1,1851 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🏫 國小課堂台語翻牌配對遊戲</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              blue: '#E0F2FE',
+              yellow: '#FEF08A',
+              green: '#22C55E',
+              red: '#EF4444',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* 3D 翻牌效果 */
+    .perspective-1000 {
+      perspective: 1000px;
+    }
+    .transform-style-3d {
+      transform-style: preserve-3d;
+    }
+    .backface-hidden {
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+    .rotate-y-180 {
+      transform: rotateY(180deg);
+    }
+    /* 卡片按鈕點擊微反饋 */
+    .card-active:active {
+      transform: scale(0.96);
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 via-sky-50 to-yellow-50 min-h-screen text-slate-800 flex flex-col font-sans select-none">
+
+  <!-- 頂部課堂導航欄 (符合規範 A：左上角主標題點擊一鍵重置) -->
+  <header class="bg-white/90 backdrop-blur border-b border-sky-100 shadow-sm sticky top-0 z-30 px-4 py-3">
+    <div class="max-w-6xl mx-auto flex items-center justify-between gap-4">
+      <!-- 主標題 (一鍵重置按鈕) -->
+      <button onclick="confirmResetGame()" class="flex items-center gap-2 group text-left focus:outline-none" title="點擊回到初始設定與選單">
+        <span class="text-3xl transition-transform group-hover:scale-110">🏫</span>
+        <div>
+          <h1 class="text-xl md:text-2xl font-black text-sky-800 tracking-wide group-hover:text-sky-600 transition-colors">
+            台語翻牌配對小遊戲
+          </h1>
+          <p class="text-xs text-sky-500 font-medium">點擊標題一鍵重置 ↺</p>
+        </div>
+      </button>
+
+      <!-- 課別資訊與題庫狀態標籤 -->
+      <div class="flex items-center gap-2">
+        <button id="syncSheetBtn" onclick="syncWithGoogleSheets(true)" class="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs md:text-sm font-bold px-3 py-1.5 rounded-full transition-all flex items-center gap-1.5 shadow-sm active:scale-95" title="即時連線 Google Sheets 同步最新題庫與音檔">
+          <span id="syncIcon" class="inline-block transition-transform">🔄</span>
+          <span>同步試算表</span>
+        </button>
+        <span id="lessonBadge" class="bg-amber-100 text-amber-800 border border-amber-200 text-xs md:text-sm font-bold px-3 py-1.5 rounded-full shadow-sm">
+          康軒 ｜ 四年級 ｜ 第03課 好鼻獅
+        </span>
+        <button onclick="toggleVocabModal()" class="bg-sky-100 hover:bg-sky-200 text-sky-700 text-xs md:text-sm font-bold px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 shadow-sm">
+          <span>📖</span>
+          <span>課文語詞表</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 警示 Toast 容器 (針對教育部無音檔或缺檔時提示) -->
+  <div id="toastContainer" class="fixed top-16 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- 主要內容區 -->
+  <main class="flex-1 max-w-6xl w-full mx-auto p-4 flex flex-col justify-center items-center">
+
+    <!-- 遊戲初始設定介面 (選單) -->
+    <div id="setupView" class="w-full max-w-xl bg-white/95 rounded-3xl shadow-xl border border-sky-100 p-6 md:p-8 flex flex-col gap-6 text-center">
+      <div class="space-y-2">
+        <div class="inline-block p-4 bg-sky-100 text-sky-600 rounded-full text-4xl mb-2">
+          🎴
+        </div>
+        <h2 class="text-3xl font-extrabold text-slate-800">準備開始配對</h2>
+        <p class="text-slate-500 font-medium">翻開卡片找出相同的台語詞彙（隨機出現漢字、課本插圖或台羅拼音）</p>
+      </div>
+
+      <!-- 課程課別分級選擇：先挑選年級，再選課別 (減少多餘訊息干擾) -->
+      <div class="space-y-3 text-left">
+        <label class="block text-sm font-bold text-slate-700 flex items-center gap-1.5">
+          <span>📚</span> 請選擇課程單元：
+        </label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <!-- 步驟一：挑選年級 / 冊別 -->
+          <div class="space-y-1.5">
+            <label for="gradeSelect" class="block text-xs font-bold text-sky-800 flex items-center gap-1">
+              <span>🎒</span> 1. 先選年級 / 冊別：
+            </label>
+            <div class="relative">
+              <select id="gradeSelect" onchange="onGradeSelectChange(this.value)" class="w-full appearance-none bg-slate-50 border-2 border-sky-200 rounded-2xl px-4 py-3 pr-10 text-base md:text-lg font-bold text-sky-900 focus:outline-none focus:border-sky-400 shadow-sm cursor-pointer hover:border-sky-300 transition-colors">
+                <!-- 由 JS 動態依年級分群產生 -->
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-sky-600">
+                <svg class="w-5 h-5 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- 步驟二：挑選課別 -->
+          <div class="space-y-1.5">
+            <label for="lessonSelect" class="block text-xs font-bold text-sky-800 flex items-center gap-1">
+              <span>📖</span> 2. 再選課別單元：
+            </label>
+            <div class="relative">
+              <select id="lessonSelect" onchange="onLessonSelectChange(this.value)" class="w-full appearance-none bg-slate-50 border-2 border-sky-200 rounded-2xl px-4 py-3 pr-10 text-base md:text-lg font-bold text-sky-900 focus:outline-none focus:border-sky-400 shadow-sm cursor-pointer hover:border-sky-300 transition-colors">
+                <!-- 由 JS 根據所選年級動態更新 -->
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-sky-600">
+                <svg class="w-5 h-5 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 牌數選擇 (根據課程動態生成) -->
+      <div class="space-y-3">
+        <label class="block text-sm font-bold text-slate-600 text-left">請選擇挑戰牌數：</label>
+        <div id="cardCountOptions" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- 由 JS 動態渲染 -->
+        </div>
+      </div>
+
+      <!-- 配對規則提醒 -->
+      <div class="bg-sky-50/80 rounded-2xl p-4 text-left text-sm text-sky-900 border border-sky-100 space-y-1.5">
+        <p class="font-bold flex items-center gap-1 text-sky-800">
+          <span>💡</span> 遊戲玩法說明：
+        </p>
+        <ul class="list-disc list-inside text-sky-700 text-xs md:text-sm space-y-1">
+          <li>翻開卡片時會立刻播放該詞的台語朗讀發音。</li>
+          <li>每組詞彙隨機呈現「台語漢字」、「課本插圖」或「台羅拼音」。</li>
+          <li>只要翻出代表「同一個詞彙」的兩張牌，即配對成功！</li>
+          <li>配對成功後卡片保留在原位並變淡標示，不會消失。</li>
+        </ul>
+      </div>
+
+      <!-- 開始按鈕 -->
+      <button onclick="startGame()" class="w-full py-4 bg-emerald-500 hover:bg-emerald-600 active:scale-98 text-white font-black text-2xl rounded-2xl shadow-lg shadow-emerald-200 transition-all flex items-center justify-center gap-2">
+        <span>🚀</span>
+        <span>進入遊戲</span>
+      </button>
+
+      <!-- 檢視排行榜按鈕 -->
+      <button onclick="toggleLeaderboardModal()" class="text-sky-600 hover:text-sky-800 font-bold text-sm underline">
+        🏆 查看班級英雄榜 (座號 1~30)
+      </button>
+    </div>
+
+    <!-- 遊戲進行中畫面 (遊戲盤面) -->
+    <div id="gameView" class="w-full flex-col items-center gap-4 hidden">
+      <!-- 狀態欄：計時、步數、已配對組數、控制鈕 -->
+      <div class="w-full bg-white/90 backdrop-blur rounded-2xl p-4 shadow-md border border-sky-100 flex flex-wrap items-center justify-between gap-4">
+        <!-- 統計數據 -->
+        <div class="flex items-center gap-4 md:gap-8">
+          <!-- 計時器 -->
+          <div class="flex items-center gap-2">
+            <span class="text-2xl">⏱️</span>
+            <div>
+              <p class="text-xs text-slate-400 font-bold">遊戲計時</p>
+              <p id="timerDisplay" class="text-2xl font-black text-sky-700 font-mono">00:00</p>
+            </div>
+          </div>
+          <!-- 翻牌次數 -->
+          <div class="flex items-center gap-2">
+            <span class="text-2xl">👆</span>
+            <div>
+              <p class="text-xs text-slate-400 font-bold">翻牌次數</p>
+              <p id="flipsDisplay" class="text-2xl font-black text-amber-600 font-mono">0</p>
+            </div>
+          </div>
+          <!-- 配對進度 -->
+          <div class="flex items-center gap-2">
+            <span class="text-2xl">🎯</span>
+            <div>
+              <p class="text-xs text-slate-400 font-bold">已配對進度</p>
+              <p id="pairsDisplay" class="text-2xl font-black text-emerald-600 font-mono">0 / 6</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 課堂控場按鈕 -->
+        <div class="flex items-center gap-2">
+          <button onclick="restartCurrentGame()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition-colors shadow-sm" title="重新打亂洗牌">
+            🔄 重新洗牌
+          </button>
+          <button onclick="confirmResetGame()" class="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-xl text-sm transition-colors border border-rose-200 shadow-sm">
+            🚪 返回選單
+          </button>
+        </div>
+      </div>
+
+      <!-- 卡片盤面網格 (12 或 14 張) -->
+      <div id="cardsGrid" class="w-full grid gap-3 md:gap-4 my-2">
+        <!-- 卡片由 JS 動態生成 -->
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 結算完成彈窗 (符合規範 A：五星評價、座號 1~30 排行榜) -->
+  <div id="victoryModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 md:p-8 shadow-2xl border-4 border-amber-300 text-center flex flex-col gap-5 animate-bounce-short">
+      <!-- 勝利圖標 -->
+      <div class="text-5xl">🎉</div>
+      <h3 class="text-3xl font-black text-slate-800">恭喜配對成功！</h3>
+      
+      <!-- 五星評分 -->
+      <div class="flex justify-center gap-2 text-3xl" id="starRating">
+        ⭐⭐⭐⭐⭐
+      </div>
+      <p id="victoryFeedback" class="text-amber-600 font-extrabold text-lg">太厲害了！台語達人！</p>
+
+      <!-- 成績數據 -->
+      <div class="bg-sky-50 rounded-2xl p-4 grid grid-cols-2 gap-4 text-left border border-sky-100">
+        <div>
+          <span class="text-xs text-slate-400 font-bold">總耗時：</span>
+          <p id="finalTime" class="text-xl font-black text-sky-800">00:45</p>
+        </div>
+        <div>
+          <span class="text-xs text-slate-400 font-bold">總翻牌次數：</span>
+          <p id="finalFlips" class="text-xl font-black text-amber-600">14 次</p>
+        </div>
+      </div>
+
+      <!-- 登記座號 -->
+      <div class="space-y-2 text-left">
+        <label class="block text-xs font-bold text-slate-500">學生座號登記 (1 ~ 30 號)：</label>
+        <div class="flex gap-2">
+          <select id="seatSelect" class="flex-1 bg-slate-50 border-2 border-slate-200 rounded-xl px-3 py-2 text-lg font-bold text-slate-700 focus:outline-none focus:border-sky-400">
+            <!-- 1~30 號由 JS 生成 -->
+          </select>
+          <button onclick="saveScore()" id="btnSaveScore" class="px-5 py-2 bg-sky-500 hover:bg-sky-600 active:scale-95 text-white font-extrabold rounded-xl transition-all shadow-md">
+            儲存成績
+          </button>
+        </div>
+        <p id="saveStatusMsg" class="text-xs text-emerald-600 font-bold hidden">✅ 成績已登錄至英雄榜！</p>
+      </div>
+
+      <!-- 操作按鈕 -->
+      <div class="grid grid-cols-2 gap-3 pt-2">
+        <button onclick="toggleLeaderboardModal()" class="py-3 bg-amber-100 hover:bg-amber-200 text-amber-800 font-extrabold rounded-xl text-sm transition-colors">
+          🏆 查看英雄榜
+        </button>
+        <button onclick="playAgain()" class="py-3 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-extrabold rounded-xl text-sm transition-all shadow-md">
+          🔄 再玩一次
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 本機英雄榜彈窗 (localStorage Top 5) -->
+  <div id="leaderboardModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-sky-100 flex flex-col gap-4">
+      <div class="flex items-center justify-between border-b pb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">🏆</span>
+          <h3 class="text-xl font-black text-slate-800">班級英雄榜 (Top 5)</h3>
+        </div>
+        <button onclick="toggleLeaderboardModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">✕</button>
+      </div>
+
+      <div class="overflow-y-auto max-h-72">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-sky-50 text-sky-800 font-bold border-b border-sky-100">
+            <tr>
+              <th class="py-2 px-3">名次</th>
+              <th class="py-2 px-3">座號</th>
+              <th class="py-2 px-3">星級</th>
+              <th class="py-2 px-3">時間</th>
+              <th class="py-2 px-3">次數</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboardTbody" class="divide-y divide-slate-100">
+            <!-- JS 動態渲染 -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="flex items-center justify-between pt-2">
+        <button onclick="clearLeaderboard()" class="text-xs text-rose-500 hover:underline font-medium">清空排行榜記錄</button>
+        <button onclick="toggleLeaderboardModal()" class="px-5 py-2 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-xl text-sm">
+          關閉
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 題庫檢視彈窗 -->
+  <div id="vocabModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-sky-100 flex flex-col gap-4">
+      <div class="flex items-center justify-between border-b pb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">📖</span>
+          <h3 class="text-xl font-black text-slate-800">課文語詞表 (康軒五年級 三向前衝)</h3>
+        </div>
+        <button onclick="toggleVocabModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">✕</button>
+      </div>
+
+      <div class="overflow-y-auto max-h-80">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-sky-50 text-sky-800 font-bold border-b border-sky-100">
+            <tr>
+              <th class="py-2 px-3">序號</th>
+              <th class="py-2 px-3">漢字</th>
+              <th class="py-2 px-3">台羅拼音</th>
+              <th class="py-2 px-3">課本插圖</th>
+              <th class="py-2 px-3 text-center">試聽</th>
+            </tr>
+          </thead>
+          <tbody id="vocabTbody" class="divide-y divide-slate-100">
+            <!-- JS 動態渲染 -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="bg-amber-50 rounded-xl p-3 text-xs text-amber-800 flex items-center justify-between">
+        <span>☁️ 題庫試算表同步：已連線至 Google Sheets 試算表</span>
+        <a href="https://docs.google.com/spreadsheets/d/1mb5MB0WUuBPeb0Y55yJpi1OECvxQzKtsEO_GkTxv6Es/edit" target="_blank" class="text-sky-600 underline font-bold">打開試算表 ↗</a>
+      </div>
+
+      <div class="flex justify-end pt-2">
+        <button onclick="toggleVocabModal()" class="px-5 py-2 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-xl text-sm">
+          關閉
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript 遊戲核心邏輯 -->
+  <script>
+    // 1. 多課程題庫資料模型 (支援各冊、各課獨立模組與專屬資源)
+    const COURSES_DATA = {
+  "zhenping_g3_l3": {
+    "id": "zhenping_g3_l3",
+    "gradeId": "grade_3",
+    "gradeLabel": "三年級 ｜ 真平第05冊",
+    "lessonLabel": "第03課 運動會 (6 組詞彙)",
+    "badge": "真平 ｜ 三年級 ｜ 第03課 運動會",
+    "title": "真平 ｜ 三年級 ｜ 第03課 運動會",
+    "folder": "courses/真平_三年級_第03課_運動會",
+    "vocabularies": [
+      {
+        "id": 1,
+        "hanji": "跳索仔",
+        "tailo": "thiàu-soh-á",
+        "image": "courses/真平_三年級_第03課_運動會/pic/thiau-soh-a.png",
+        "soundLocal": "courses/真平_三年級_第03課_運動會/speak/thiau-soh-a.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/10/10203.mp3",
+        "meaning": "跳索仔"
+      },
+      {
+        "id": 2,
+        "hanji": "泅水",
+        "tailo": "siû-tsuí",
+        "image": "courses/真平_三年級_第03課_運動會/pic/siu-tsui.png",
+        "soundLocal": "courses/真平_三年級_第03課_運動會/speak/siu-tsui.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/4/4266.mp3",
+        "meaning": "泅水"
+      },
+      {
+        "id": 3,
+        "hanji": "拍羽毛球",
+        "tailo": "phah ú-môo-kiû",
+        "image": "courses/真平_三年級_第03課_運動會/pic/phah-u-moo-kiu.png",
+        "soundLocal": "courses/真平_三年級_第03課_運動會/speak/phah-u-moo-kiu.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/25/25568.mp3",
+        "meaning": "拍羽毛球"
+      },
+      {
+        "id": 4,
+        "hanji": "拍籃球",
+        "tailo": "phah nâ-kiû",
+        "image": "courses/真平_三年級_第03課_運動會/pic/phah-na-kiu.png",
+        "soundLocal": "courses/真平_三年級_第03課_運動會/speak/phah-na-kiu.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/12/12996.mp3",
+        "meaning": "拍籃球"
+      },
+      {
+        "id": 5,
+        "hanji": "摃野球",
+        "tailo": "kòng iá-kiû",
+        "image": "courses/真平_三年級_第03課_運動會/pic/kong-ia-kiu.png",
+        "soundLocal": "courses/真平_三年級_第03課_運動會/speak/kong-ia-kiu.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/8/8054.mp3",
+        "meaning": "摃野球"
+      },
+      {
+        "id": 6,
+        "hanji": "踢跤球",
+        "tailo": "that-kha-kiû",
+        "image": "courses/真平_三年級_第03課_運動會/pic/that-kha-kiu.png",
+        "soundLocal": "courses/真平_三年級_第03課_運動會/speak/that-kha-kiu.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/10/10106.mp3",
+        "meaning": "踢跤球"
+      }
+    ],
+    "cardOptions": [
+      {
+        "count": 8,
+        "label": "8 張牌",
+        "desc": "抽 4 組語詞 (橫向 4 張 × 直向 2 張)"
+      },
+      {
+        "count": 10,
+        "label": "10 張牌",
+        "desc": "抽 5 組語詞 (橫向 5 張 × 直向 2 張)"
+      },
+      {
+        "count": 12,
+        "label": "12 張牌",
+        "desc": "本課 6 組全出 (橫向 4 張 × 直向 3 張)"
+      }
+    ]
+  },
+  "zhenping_g3_l4": {
+    "id": "zhenping_g3_l4",
+    "gradeId": "grade_3",
+    "gradeLabel": "三年級 ｜ 真平第05冊",
+    "lessonLabel": "第04課 擔仔位 (9 組詞彙)",
+    "badge": "真平 ｜ 三年級 ｜ 第04課 擔仔位",
+    "title": "真平 ｜ 三年級 ｜ 第04課 擔仔位",
+    "folder": "courses/真平_三年級_第04課_擔仔位",
+    "vocabularies": [
+      {
+        "id": 1,
+        "hanji": "擔仔位",
+        "tailo": "tànn-á-uī",
+        "image": "courses/真平_三年級_第04課_擔仔位/pic/tann-a-ui.png",
+        "soundLocal": "courses/真平_三年級_第04課_擔仔位/speak/tann-a-ui.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/13/13826.mp3",
+        "meaning": "擔仔位"
+      },
+      {
+        "id": 2,
+        "hanji": "文具店",
+        "tailo": "bûn-kū-tiàm",
+        "image": "courses/真平_三年級_第04課_擔仔位/pic/bun-ku-tiam.png",
+        "soundLocal": "courses/真平_三年級_第04課_擔仔位/speak/bun-ku-tiam.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/DZ/pF/299741.mp3",
+        "meaning": "文具店"
+      },
+      {
+        "id": 3,
+        "hanji": "便當店",
+        "tailo": "piān-tòng-tiàm",
+        "image": "courses/真平_三年級_第04課_擔仔位/pic/pian-tong-tiam.png",
+        "soundLocal": "courses/真平_三年級_第04課_擔仔位/speak/pian-tong-tiam.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/4/4686.mp3",
+        "meaning": "便當店"
+      },
+      {
+        "id": 4,
+        "hanji": "洗衫店",
+        "tailo": "sé-sann-tiàm",
+        "image": "courses/真平_三年級_第04課_擔仔位/pic/se-sann-tiam.png",
+        "soundLocal": "courses/真平_三年級_第04課_擔仔位/speak/se-sann-tiam.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/5/5147.mp3",
+        "meaning": "洗衫店"
+      },
+      {
+        "id": 5,
+        "hanji": "目鏡行",
+        "tailo": "ba̍k-kiànn-hâng",
+        "image": "courses/真平_三年級_第04課_擔仔位/pic/bak-kiann-hang.png",
+        "soundLocal": "courses/真平_三年級_第04課_擔仔位/speak/bak-kiann-hang.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/2/2024.mp3",
+        "meaning": "目鏡行"
+      },
+      {
+        "id": 6,
+        "hanji": "冊店、冊局",
+        "tailo": "tsheh-tiàm / tsheh-kio̍k",
+        "image": "courses/真平_三年級_第04課_擔仔位/pic/tsheh-tiam.png",
+        "soundLocal": "courses/真平_三年級_第04課_擔仔位/speak/tsheh-tiam.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/1/1332.mp3",
+        "meaning": "冊店、冊局"
+      },
+      {
+        "id": 7,
+        "hanji": "頭毛店",
+        "tailo": "thâu-mn̂g-tiàm",
+        "image": "courses/真平_三年級_第04課_擔仔位/pic/thau-mng-tiam.png",
+        "soundLocal": "courses/真平_三年級_第04課_擔仔位/speak/thau-mng-tiam.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/12/12041.mp3",
+        "meaning": "頭毛店"
+      },
+      {
+        "id": 8,
+        "hanji": "超市",
+        "tailo": "tshiau-tshī",
+        "image": "courses/真平_三年級_第04課_擔仔位/pic/tshiau-tshi.png",
+        "soundLocal": "courses/真平_三年級_第04課_擔仔位/speak/tshiau-tshi.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/24/24591.mp3",
+        "meaning": "超市"
+      },
+      {
+        "id": 9,
+        "hanji": "藥局",
+        "tailo": "io̍h-kio̍k",
+        "image": "courses/真平_三年級_第04課_擔仔位/pic/ioh-kiok.png",
+        "soundLocal": "courses/真平_三年級_第04課_擔仔位/speak/ioh-kiok.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/12/12847.mp3",
+        "meaning": "藥局"
+      }
+    ],
+    "cardOptions": [
+      {
+        "count": 12,
+        "label": "12 張牌",
+        "desc": "抽 6 組語詞 (橫向 4 張 × 直向 3 張)"
+      },
+      {
+        "count": 16,
+        "label": "16 張牌",
+        "desc": "抽 8 組語詞 (橫向 4 張 × 直向 4 張)"
+      }
+    ]
+  },
+  "zhenping_g3_l5": {
+    "id": "zhenping_g3_l5",
+    "gradeId": "grade_3",
+    "gradeLabel": "三年級 ｜ 真平第05冊",
+    "lessonLabel": "第05課 咱的英雄 (9 組詞彙)",
+    "badge": "真平 ｜ 三年級 ｜ 第05課 咱的英雄",
+    "title": "真平 ｜ 三年級 ｜ 第05課 咱的英雄",
+    "folder": "courses/真平_三年級_第05課_咱的英雄",
+    "vocabularies": [
+      {
+        "id": 1,
+        "hanji": "醫生",
+        "tailo": "i-sing",
+        "image": "courses/真平_三年級_第05課_咱的英雄/pic/i-sing.png",
+        "soundLocal": "courses/真平_三年級_第05課_咱的英雄/speak/i-sing.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/12/12673.mp3",
+        "meaning": "醫生"
+      },
+      {
+        "id": 2,
+        "hanji": "護理師",
+        "tailo": "hōo-lí-su",
+        "image": "courses/真平_三年級_第05課_咱的英雄/pic/hoo-li-su.png",
+        "soundLocal": "courses/真平_三年級_第05課_咱的英雄/speak/hoo-li-su.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/13/13152.mp3",
+        "meaning": "護理師"
+      },
+      {
+        "id": 3,
+        "hanji": "司機",
+        "tailo": "su-ki",
+        "image": "courses/真平_三年級_第05課_咱的英雄/pic/su-ki.png",
+        "soundLocal": "courses/真平_三年級_第05課_咱的英雄/speak/su-ki.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/1/1608.mp3",
+        "meaning": "司機"
+      },
+      {
+        "id": 4,
+        "hanji": "老師",
+        "tailo": "lāu-su",
+        "image": "courses/真平_三年級_第05課_咱的英雄/pic/lau-su.png",
+        "soundLocal": "courses/真平_三年級_第05課_咱的英雄/speak/lau-su.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/2/2699.mp3",
+        "meaning": "老師"
+      },
+      {
+        "id": 5,
+        "hanji": "店員",
+        "tailo": "tiàm-uân",
+        "image": "courses/真平_三年級_第05課_咱的英雄/pic/tiam-uan.png",
+        "soundLocal": "courses/真平_三年級_第05課_咱的英雄/speak/tiam-uan.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/3/3842.mp3",
+        "meaning": "店員"
+      },
+      {
+        "id": 6,
+        "hanji": "生理人",
+        "tailo": "sing-lí-lâng",
+        "image": "courses/真平_三年級_第05課_咱的英雄/pic/sing-li-lang.png",
+        "soundLocal": "courses/真平_三年級_第05課_咱的英雄/speak/sing-li-lang.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/1/1946.mp3",
+        "meaning": "生理人"
+      },
+      {
+        "id": 7,
+        "hanji": "總鋪師",
+        "tailo": "tsóng-phòo-sai",
+        "image": "courses/真平_三年級_第05課_咱的英雄/pic/tsong-phoo-sai.png",
+        "soundLocal": "courses/真平_三年級_第05課_咱的英雄/speak/tsong-phoo-sai.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/12/12281.mp3",
+        "meaning": "總鋪師"
+      },
+      {
+        "id": 8,
+        "hanji": "討海人",
+        "tailo": "thó-hái-lâng",
+        "image": "courses/真平_三年級_第05課_咱的英雄/pic/tho-hai-lang.png",
+        "soundLocal": "courses/真平_三年級_第05課_咱的英雄/speak/tho-hai-lang.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/6/6738.mp3",
+        "meaning": "討海人"
+      },
+      {
+        "id": 9,
+        "hanji": "作穡人、作田人",
+        "tailo": "tsoh-sit-lâng / tsoh-tshân-lâng",
+        "image": "courses/真平_三年級_第05課_咱的英雄/pic/tsoh-sit-lang.png",
+        "soundLocal": "courses/真平_三年級_第05課_咱的英雄/speak/tsoh-sit-lang.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/2/2941.mp3",
+        "meaning": "作穡人、作田人"
+      }
+    ],
+    "cardOptions": [
+      {
+        "count": 12,
+        "label": "12 張牌",
+        "desc": "抽 6 組語詞 (橫向 4 張 × 直向 3 張)"
+      },
+      {
+        "count": 16,
+        "label": "16 張牌",
+        "desc": "抽 8 組語詞 (橫向 4 張 × 直向 4 張)"
+      }
+    ]
+  },
+  "kangxuan_g4_l3": {
+    "id": "kangxuan_g4_l3",
+    "gradeId": "grade_4",
+    "gradeLabel": "四年級 ｜ 康軒第07冊",
+    "lessonLabel": "第03課 好鼻獅 (8 組詞彙)",
+    "badge": "康軒 ｜ 四年級 ｜ 第03課 好鼻獅",
+    "title": "康軒 ｜ 四年級 ｜ 第03課 好鼻獅",
+    "folder": "courses/康軒_四年級_第03課_好鼻獅",
+    "vocabularies": [
+      {
+        "id": 1,
+        "hanji": "食",
+        "tailo": "tsia̍h",
+        "image": "courses/康軒_四年級_第03課_好鼻獅/pic/tsiah.png",
+        "soundLocal": "courses/康軒_四年級_第03課_好鼻獅/speak/tsiah.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/5/5570.mp3",
+        "meaning": "食"
+      },
+      {
+        "id": 2,
+        "hanji": "想",
+        "tailo": "siūnn",
+        "image": "courses/康軒_四年級_第03課_好鼻獅/pic/siunn.png",
+        "soundLocal": "courses/康軒_四年級_第03課_好鼻獅/speak/siunn.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/9/9422.mp3",
+        "meaning": "想"
+      },
+      {
+        "id": 3,
+        "hanji": "相",
+        "tailo": "siòng",
+        "image": "courses/康軒_四年級_第03課_好鼻獅/pic/siong.png",
+        "soundLocal": "courses/康軒_四年級_第03課_好鼻獅/speak/siong.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/5/5226.mp3",
+        "meaning": "相"
+      },
+      {
+        "id": 4,
+        "hanji": "聽",
+        "tailo": "thiann",
+        "image": "courses/康軒_四年級_第03課_好鼻獅/pic/thiann.png",
+        "soundLocal": "courses/康軒_四年級_第03課_好鼻獅/speak/thiann.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/13/13225.mp3",
+        "meaning": "聽"
+      },
+      {
+        "id": 5,
+        "hanji": "攬",
+        "tailo": "lám",
+        "image": "courses/康軒_四年級_第03課_好鼻獅/pic/lam.png",
+        "soundLocal": "courses/康軒_四年級_第03課_好鼻獅/speak/lam.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/13/13328.mp3",
+        "meaning": "攬"
+      },
+      {
+        "id": 6,
+        "hanji": "舐",
+        "tailo": "tsīnn",
+        "image": "courses/康軒_四年級_第03課_好鼻獅/pic/tsinn.png",
+        "soundLocal": "courses/康軒_四年級_第03課_好鼻獅/speak/tsinn.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/6/6533.mp3",
+        "meaning": "舐"
+      },
+      {
+        "id": 7,
+        "hanji": "啉",
+        "tailo": "lim",
+        "image": "courses/康軒_四年級_第03課_好鼻獅/pic/lim.png",
+        "soundLocal": "courses/康軒_四年級_第03課_好鼻獅/speak/lim.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/7/7018.mp3",
+        "meaning": "啉"
+      },
+      {
+        "id": 8,
+        "hanji": "鼻",
+        "tailo": "phīnn",
+        "image": "courses/康軒_四年級_第03課_好鼻獅/pic/phinn.png",
+        "soundLocal": "courses/康軒_四年級_第03課_好鼻獅/speak/phinn.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/10/10938.mp3",
+        "meaning": "鼻"
+      }
+    ],
+    "cardOptions": [
+      {
+        "count": 12,
+        "label": "12 張牌",
+        "desc": "抽 6 組語詞 (橫向 4 張 × 直向 3 張)"
+      },
+      {
+        "count": 16,
+        "label": "16 張牌",
+        "desc": "抽 8 組語詞 (橫向 4 張 × 直向 4 張)"
+      }
+    ]
+  },
+  "kangxuan_g4_l4": {
+    "id": "kangxuan_g4_l4",
+    "gradeId": "grade_4",
+    "gradeLabel": "四年級 ｜ 康軒第07冊",
+    "lessonLabel": "第04課 著傷 (7 組詞彙)",
+    "badge": "康軒 ｜ 四年級 ｜ 第04課 著傷",
+    "title": "康軒 ｜ 四年級 ｜ 第04課 著傷",
+    "folder": "courses/康軒_四年級_第04課_著傷",
+    "vocabularies": [
+      {
+        "id": 1,
+        "hanji": "流血",
+        "tailo": "lâu-hueh",
+        "image": "courses/康軒_四年級_第04課_著傷/pic/lau-hueh.png",
+        "soundLocal": "courses/康軒_四年級_第04課_著傷/speak/lau-hueh.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/5/5185.mp3",
+        "meaning": "流血"
+      },
+      {
+        "id": 2,
+        "hanji": "掌腿",
+        "tailo": "thènn-thuí",
+        "image": "courses/康軒_四年級_第04課_著傷/pic/thenn-thui.png",
+        "soundLocal": "courses/康軒_四年級_第04課_著傷/speak/thenn-thui.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/8/8662.mp3",
+        "meaning": "掌腿"
+      },
+      {
+        "id": 3,
+        "hanji": "燙著",
+        "tailo": "thǹg--tio̍h",
+        "image": "courses/康軒_四年級_第04課_著傷/pic/thng-tioh.png",
+        "soundLocal": "courses/康軒_四年級_第04課_著傷/speak/thng-tioh.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/11/11775.mp3",
+        "meaning": "燙著"
+      },
+      {
+        "id": 4,
+        "hanji": "擠著",
+        "tailo": "tsik--tio̍h",
+        "image": "courses/康軒_四年級_第04課_著傷/pic/tsik-tioh.png",
+        "soundLocal": "courses/康軒_四年級_第04課_著傷/speak/tsik-tioh.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/12/12142.mp3",
+        "meaning": "擠著"
+      },
+      {
+        "id": 5,
+        "hanji": "挵著",
+        "tailo": "lòng--tio̍h",
+        "image": "courses/康軒_四年級_第04課_著傷/pic/long-tioh.png",
+        "soundLocal": "courses/康軒_四年級_第04課_著傷/speak/long-tioh.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/5/5982.mp3",
+        "meaning": "挵著"
+      },
+      {
+        "id": 6,
+        "hanji": "烏青",
+        "tailo": "oo-tshenn",
+        "image": "courses/康軒_四年級_第04課_著傷/pic/oo-tshenn.png",
+        "soundLocal": "courses/康軒_四年級_第04課_著傷/speak/oo-tshenn.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/6/6266.mp3",
+        "meaning": "烏青"
+      },
+      {
+        "id": 7,
+        "hanji": "扭著",
+        "tailo": "láu--tio̍h",
+        "image": "courses/康軒_四年級_第04課_著傷/pic/lau-tioh.png",
+        "soundLocal": "courses/康軒_四年級_第04課_著傷/speak/lau-tioh.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/3/3142.mp3",
+        "meaning": "扭著"
+      }
+    ],
+    "cardOptions": [
+      {
+        "count": 10,
+        "label": "10 張牌",
+        "desc": "抽 5 組語詞 (橫向 5 張 × 直向 2 張)"
+      },
+      {
+        "count": 12,
+        "label": "12 張牌",
+        "desc": "抽 6 組語詞 (橫向 4 張 × 直向 3 張)"
+      },
+      {
+        "count": 14,
+        "label": "14 張牌",
+        "desc": "本課 7 組全出 (橫向 5 張 × 直向 3 張)"
+      }
+    ]
+  },
+  "kangxuan_g4_l5": {
+    "id": "kangxuan_g4_l5",
+    "gradeId": "grade_4",
+    "gradeLabel": "四年級 ｜ 康軒第07冊",
+    "lessonLabel": "第05課 電器真利便 (7 組詞彙)",
+    "badge": "康軒 ｜ 四年級 ｜ 第05課 電器真利便",
+    "title": "康軒 ｜ 四年級 ｜ 第05課 電器真利便",
+    "folder": "courses/康軒_四年級_第05課_電器真利便",
+    "vocabularies": [
+      {
+        "id": 1,
+        "hanji": "吹風機",
+        "tailo": "tshue-hong-ki",
+        "image": "courses/康軒_四年級_第05課_電器真利便/pic/tshue-hong-ki.png",
+        "soundLocal": "courses/康軒_四年級_第05課_電器真利便/speak/tshue-hong-ki.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/2/2990.mp3",
+        "meaning": "吹風機"
+      },
+      {
+        "id": 2,
+        "hanji": "電風",
+        "tailo": "tiān-hong",
+        "image": "courses/康軒_四年級_第05課_電器真利便/pic/tian-hong.png",
+        "soundLocal": "courses/康軒_四年級_第05課_電器真利便/speak/tian-hong.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/10/10317.mp3",
+        "meaning": "電風"
+      },
+      {
+        "id": 3,
+        "hanji": "洗衫機",
+        "tailo": "sé-sann-ki",
+        "image": "courses/康軒_四年級_第05課_電器真利便/pic/se-sann-ki.png",
+        "soundLocal": "courses/康軒_四年級_第05課_電器真利便/speak/se-sann-ki.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/5/5146.mp3",
+        "meaning": "洗衫機"
+      },
+      {
+        "id": 4,
+        "hanji": "烘箱",
+        "tailo": "hang-siunn",
+        "image": "courses/康軒_四年級_第05課_電器真利便/pic/hang-siunn.png",
+        "soundLocal": "courses/康軒_四年級_第05課_電器真利便/speak/hang-siunn.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/6/6228.mp3",
+        "meaning": "烘箱"
+      },
+      {
+        "id": 5,
+        "hanji": "電子鍋",
+        "tailo": "tiān-tsú-ko",
+        "image": "courses/康軒_四年級_第05課_電器真利便/pic/tian-tsu-ko.png",
+        "soundLocal": "courses/康軒_四年級_第05課_電器真利便/speak/tian-tsu-ko.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/10/10290.mp3",
+        "meaning": "電子鍋"
+      },
+      {
+        "id": 6,
+        "hanji": "冰箱",
+        "tailo": "ping-siunn",
+        "image": "courses/康軒_四年級_第05課_電器真利便/pic/ping-siunn.png",
+        "soundLocal": "courses/康軒_四年級_第05課_電器真利便/speak/ping-siunn.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/2/2247.mp3",
+        "meaning": "冰箱"
+      },
+      {
+        "id": 7,
+        "hanji": "烘碗機",
+        "tailo": "hang-uánn-ki",
+        "image": "courses/康軒_四年級_第05課_電器真利便/pic/hang-uann-ki.png",
+        "soundLocal": "courses/康軒_四年級_第05課_電器真利便/speak/hang-uann-ki.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/9/9775.mp3",
+        "meaning": "烘碗機"
+      }
+    ],
+    "cardOptions": [
+      {
+        "count": 10,
+        "label": "10 張牌",
+        "desc": "抽 5 組語詞 (橫向 5 張 × 直向 2 張)"
+      },
+      {
+        "count": 12,
+        "label": "12 張牌",
+        "desc": "抽 6 組語詞 (橫向 4 張 × 直向 3 張)"
+      },
+      {
+        "count": 14,
+        "label": "14 張牌",
+        "desc": "本課 7 組全出 (橫向 5 張 × 直向 3 張)"
+      }
+    ]
+  },
+  "kangxuan_g5_l3": {
+    "id": "kangxuan_g5_l3",
+    "gradeId": "grade_5",
+    "gradeLabel": "五年級 ｜ 康軒第09冊",
+    "lessonLabel": "第03課 向前衝 (7 組詞彙)",
+    "badge": "康軒 ｜ 五年級 ｜ 第03課 向前衝",
+    "title": "康軒 ｜ 五年級 ｜ 第03課 向前衝",
+    "folder": "courses/康軒_五年級_第03課_向前衝",
+    "vocabularies": [
+      {
+        "id": 1,
+        "hanji": "受氣",
+        "tailo": "siū-khì",
+        "image": "courses/康軒_五年級_第03課_向前衝/pic/siu-khi.png",
+        "soundLocal": "courses/康軒_五年級_第03課_向前衝/speak/siu-khi.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/3/3656.mp3",
+        "meaning": "受氣"
+      },
+      {
+        "id": 2,
+        "hanji": "驚惶",
+        "tailo": "kiann-hiânn",
+        "image": "courses/康軒_五年級_第03課_向前衝/pic/kiann-hiann.png",
+        "soundLocal": "courses/康軒_五年級_第03課_向前衝/speak/kiann-hiann.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/13/13311.mp3",
+        "meaning": "驚惶"
+      },
+      {
+        "id": 3,
+        "hanji": "安心",
+        "tailo": "an-sim",
+        "image": "courses/康軒_五年級_第03課_向前衝/pic/an-sim.png",
+        "soundLocal": "courses/康軒_五年級_第03課_向前衝/speak/an-sim.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/2/2300.mp3",
+        "meaning": "安心"
+      },
+      {
+        "id": 4,
+        "hanji": "失志",
+        "tailo": "sit-tsì",
+        "image": "courses/康軒_五年級_第03課_向前衝/pic/sit-tsi.png",
+        "soundLocal": "courses/康軒_五年級_第03課_向前衝/speak/sit-tsi.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/1/1708.mp3",
+        "meaning": "失志"
+      },
+      {
+        "id": 5,
+        "hanji": "幸福",
+        "tailo": "hīng-hok",
+        "image": "courses/康軒_五年級_第03課_向前衝/pic/hing-hok.png",
+        "soundLocal": "courses/康軒_五年級_第03課_向前衝/speak/hing-hok.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/3/3862.mp3",
+        "meaning": "幸福"
+      },
+      {
+        "id": 6,
+        "hanji": "感心",
+        "tailo": "kám-sim",
+        "image": "courses/康軒_五年級_第03課_向前衝/pic/kam-sim.png",
+        "soundLocal": "courses/康軒_五年級_第03課_向前衝/speak/kam-sim.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/9/9433.mp3",
+        "meaning": "感心"
+      },
+      {
+        "id": 7,
+        "hanji": "自信",
+        "tailo": "tsū-sìn",
+        "image": "courses/康軒_五年級_第03課_向前衝/pic/tsu-sin.png",
+        "soundLocal": "courses/康軒_五年級_第03課_向前衝/speak/tsu-sin.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/2/2688.mp3",
+        "meaning": "自信"
+      }
+    ],
+    "cardOptions": [
+      {
+        "count": 10,
+        "label": "10 張牌",
+        "desc": "抽 5 組語詞 (橫向 5 張 × 直向 2 張)"
+      },
+      {
+        "count": 12,
+        "label": "12 張牌",
+        "desc": "抽 6 組語詞 (橫向 4 張 × 直向 3 張)"
+      },
+      {
+        "count": 14,
+        "label": "14 張牌",
+        "desc": "本課 7 組全出 (橫向 5 張 × 直向 3 張)"
+      }
+    ]
+  },
+  "zhenping_g6_l4": {
+    "id": "zhenping_g6_l4",
+    "gradeId": "grade_6",
+    "gradeLabel": "六年級 ｜ 真平第11冊",
+    "lessonLabel": "第04課 烏鴉食水 (11 組詞彙)",
+    "badge": "真平 ｜ 六年級 ｜ 第04課 烏鴉食水",
+    "title": "真平 ｜ 六年級 ｜ 第04課 烏鴉食水",
+    "folder": "courses/真平_六年級_第04課_烏鴉食水",
+    "vocabularies": [
+      {
+        "id": 1,
+        "hanji": "規个",
+        "tailo": "kui-ê",
+        "image": "courses/真平_六年級_第04課_烏鴉食水/pic/kui-e.png",
+        "soundLocal": "courses/真平_六年級_第04課_烏鴉食水/speak/kui-e.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/7/7850.mp3",
+        "meaning": "規个"
+      },
+      {
+        "id": 2,
+        "hanji": "一半、一片",
+        "tailo": "tsit-puànn / tsit-pîng",
+        "image": "courses/真平_六年級_第04課_烏鴉食水/pic/tsit-puann.png",
+        "soundLocal": "courses/真平_六年級_第04課_烏鴉食水/speak/tsit-puann.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/0/8.mp3",
+        "meaning": "一半、一片"
+      },
+      {
+        "id": 3,
+        "hanji": "兩份一",
+        "tailo": "nn̄g-hūn-tsit",
+        "image": "courses/真平_六年級_第04課_烏鴉食水/pic/nng-hun-tsit.png",
+        "soundLocal": "courses/真平_六年級_第04課_烏鴉食水/speak/nng-hun-tsit.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/2/2045.mp3",
+        "meaning": "兩份一"
+      },
+      {
+        "id": 4,
+        "hanji": "一周",
+        "tailo": "tsit-tsiu",
+        "image": "courses/真平_六年級_第04課_烏鴉食水/pic/tsit-tsiu.png",
+        "soundLocal": "courses/真平_六年級_第04課_烏鴉食水/speak/tsit-tsiu.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/0/1.mp3",
+        "meaning": "一周"
+      },
+      {
+        "id": 5,
+        "hanji": "兩",
+        "tailo": "niú",
+        "image": "courses/真平_六年級_第04課_烏鴉食水/pic/niu.png",
+        "soundLocal": "courses/真平_六年級_第04課_烏鴉食水/speak/niu.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/3/3582.mp3",
+        "meaning": "兩"
+      },
+      {
+        "id": 6,
+        "hanji": "斤",
+        "tailo": "kin",
+        "image": "courses/真平_六年級_第04課_烏鴉食水/pic/kin.png",
+        "soundLocal": "courses/真平_六年級_第04課_烏鴉食水/speak/kin.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/0/798.mp3",
+        "meaning": "斤"
+      },
+      {
+        "id": 7,
+        "hanji": "公斤",
+        "tailo": "kong-kin",
+        "image": "courses/真平_六年級_第04課_烏鴉食水/pic/kong-kin.png",
+        "soundLocal": "courses/真平_六年級_第04課_烏鴉食水/speak/kong-kin.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/0/616.mp3",
+        "meaning": "公斤"
+      },
+      {
+        "id": 8,
+        "hanji": "公分",
+        "tailo": "kong-hun",
+        "image": "courses/真平_六年級_第04課_烏鴉食水/pic/kong-hun.png",
+        "soundLocal": "courses/真平_六年級_第04課_烏鴉食水/speak/kong-hun.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/0/605.mp3",
+        "meaning": "公分"
+      },
+      {
+        "id": 9,
+        "hanji": "尺",
+        "tailo": "tshioh",
+        "image": "courses/真平_六年級_第04課_烏鴉食水/pic/tshioh.png",
+        "soundLocal": "courses/真平_六年級_第04課_烏鴉食水/speak/tshioh.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/0/788.mp3",
+        "meaning": "尺"
+      },
+      {
+        "id": 10,
+        "hanji": "公尺",
+        "tailo": "kong-tshioh",
+        "image": "courses/真平_六年級_第04課_烏鴉食水/pic/kong-tshioh.png",
+        "soundLocal": "courses/真平_六年級_第04課_烏鴉食水/speak/kong-tshioh.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/22/22265.mp3",
+        "meaning": "公尺"
+      },
+      {
+        "id": 11,
+        "hanji": "公里",
+        "tailo": "kong-lí",
+        "image": "courses/真平_六年級_第04課_烏鴉食水/pic/kong-li.png",
+        "soundLocal": "courses/真平_六年級_第04課_烏鴉食水/speak/kong-li.mp3",
+        "soundOnline": "https://sutian.moe.edu.tw/media/senn/mp3/imtong/subak/0/661.mp3",
+        "meaning": "公里"
+      }
+    ],
+    "cardOptions": [
+      {
+        "count": 12,
+        "label": "12 張牌",
+        "desc": "抽 6 組語詞 (橫向 4 張 × 直向 3 張)"
+      },
+      {
+        "count": 16,
+        "label": "16 張牌",
+        "desc": "抽 8 組語詞 (橫向 4 張 × 直向 4 張)"
+      }
+    ]
+  }
+};
+
+    // 目前選取的課程與詞彙清單
+    let currentCourseKey = "kangxuan_g4_l3";
+    let VOCABULARY_LIST = COURSES_DATA[currentCourseKey]?.vocabularies || [];
+
+    // ==========================================
+    // 雲端試算表即時連線同步機制 (Live Google Sheets Sync)
+    // ==========================================
+    const GOOGLE_SHEET_ID = "1mb5MB0WUuBPeb0Y55yJpi1OECvxQzKtsEO_GkTxv6Es";
+    const GOOGLE_SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:csv`;
+
+    // 標準 CSV 解析器
+    function parseCSV(text) {
+      const lines = [];
+      let row = [""];
+      let inQuotes = false;
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        const next = text[i + 1];
+        if (c === '"') {
+          if (inQuotes && next === '"') {
+            row[row.length - 1] += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (c === ',' && !inQuotes) {
+          row.push('');
+        } else if ((c === '\r' || c === '\n') && !inQuotes) {
+          if (c === '\r' && next === '\n') i++;
+          if (row.length > 1 || row[0] !== '') {
+            lines.push(row);
+          }
+          row = [''];
+        } else {
+          row[row.length - 1] += c;
+        }
+      }
+      if (row.length > 1 || row[0] !== '') {
+        lines.push(row);
+      }
+      return lines;
+    }
+
+    // 即時連線 Google Sheets 同步題庫與音檔網址
+    async function syncWithGoogleSheets(isUserTriggered = false) {
+      const syncBtn = document.getElementById("syncSheetBtn");
+      const syncIcon = document.getElementById("syncIcon");
+      if (syncIcon) syncIcon.classList.add("animate-spin");
+      if (syncBtn) syncBtn.classList.add("opacity-75");
+
+      try {
+        const res = await fetch(`${GOOGLE_SHEET_CSV_URL}&_nocache=${Date.now()}`, {
+          cache: "no-store"
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const csvText = await res.text();
+        const rows = parseCSV(csvText);
+        if (rows.length <= 1) throw new Error("試算表無資料");
+
+        const dataRows = rows.slice(1);
+        const newCourses = {};
+        const gradeLabels = {
+          "三年級": "三年級 ｜ 真平第05冊",
+          "四年級": "四年級 ｜ 康軒第07冊",
+          "五年級": "五年級 ｜ 康軒第09冊",
+          "六年級": "六年級 ｜ 真平第11冊",
+        };
+
+        dataRows.forEach(r => {
+          if (r.length < 7) return;
+          const [version, grade, lesson, hanji, tailo, picName, soundUrl] = r.map(c => (c || '').trim());
+          if (!version || !grade || !lesson || !hanji) return;
+
+          const vPrefix = version.includes("真平") ? "zhenping" : "kangxuan";
+          const gMatch = grade.match(/([一二三四五六\d]+)年級/);
+          const numMap = { "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6 };
+          const gNum = gMatch ? (numMap[gMatch[1]] || parseInt(gMatch[1]) || 3) : 3;
+          const lMatch = lesson.match(/第?(\d+)課/);
+          const lNum = lMatch ? parseInt(lMatch[1], 10) : 1;
+          const courseKey = `${vPrefix}_g${gNum}_l${lNum}`;
+
+          if (!newCourses[courseKey]) {
+            const gLbl = gradeLabels[grade] || `${grade} ｜ ${version}`;
+            newCourses[courseKey] = {
+              id: courseKey,
+              gradeId: `grade_${gNum}`,
+              gradeLabel: gLbl,
+              lessonLabel: `${lesson}`,
+              badge: `${version} ｜ ${grade} ｜ ${lesson}`,
+              title: `${version} ｜ ${grade} ｜ ${lesson}`,
+              folder: `courses/${version}_${grade}_${lesson}`.replace(/\s+/g, '_'),
+              vocabularies: []
+            };
+          }
+
+          const vId = newCourses[courseKey].vocabularies.length + 1;
+          const picBase = picName.includes('.') ? picName.slice(0, picName.lastIndexOf('.')) : picName;
+          const folder = newCourses[courseKey].folder;
+          newCourses[courseKey].vocabularies.push({
+            id: vId,
+            hanji,
+            tailo,
+            image: `${folder}/pic/${picName}`,
+            soundLocal: `${folder}/speak/${picBase}.mp3`,
+            soundOnline: soundUrl,
+            meaning: hanji
+          });
+        });
+
+        // 生成挑戰牌數選項
+        Object.values(newCourses).forEach(c => {
+          const vCount = c.vocabularies.length;
+          c.lessonLabel = `${c.lessonLabel} (${vCount} 組詞彙)`;
+          const opts = [];
+          if (vCount >= 8) {
+            opts.push({ count: 12, label: "12 張牌", desc: "抽 6 組語詞 (橫向 4 張 × 直向 3 張)" });
+            opts.push({ count: 16, label: "16 張牌", desc: "抽 8 組語詞 (橫向 4 張 × 直向 4 張)" });
+          } else if (vCount === 7) {
+            opts.push({ count: 10, label: "10 張牌", desc: "抽 5 組語詞 (橫向 5 張 × 直向 2 張)" });
+            opts.push({ count: 12, label: "12 張牌", desc: "抽 6 組語詞 (橫向 4 張 × 直向 3 張)" });
+            opts.push({ count: 14, label: "14 張牌", desc: "本課 7 組全出 (橫向 5 張 × 直向 3 張)" });
+          } else if (vCount === 6) {
+            opts.push({ count: 8, label: "8 張牌", desc: "抽 4 組語詞 (橫向 4 張 × 直向 2 張)" });
+            opts.push({ count: 10, label: "10 張牌", desc: "抽 5 組語詞 (橫向 5 張 × 直向 2 張)" });
+            opts.push({ count: 12, label: "12 張牌", desc: "本課 6 組全出 (橫向 4 張 × 直向 3 張)" });
+          } else {
+            opts.push({ count: vCount * 2, label: `${vCount * 2} 張牌`, desc: `本課 ${vCount} 組全出` });
+          }
+          c.cardOptions = opts;
+        });
+
+        // 更新 COURSES_DATA
+        Object.keys(newCourses).forEach(k => {
+          COURSES_DATA[k] = newCourses[k];
+        });
+
+        // 重新初始化選單
+        initGradeAndLessonSelectors();
+        if (COURSES_DATA[currentCourseKey]) {
+          switchCourse(currentCourseKey, true);
+        }
+
+        if (isUserTriggered) {
+          const totalLessons = Object.keys(newCourses).length;
+          const totalVocabs = Object.values(newCourses).reduce((acc, c) => acc + c.vocabularies.length, 0);
+          showToast(`☁️ 試算表同步成功！已連線最新音檔與題庫（共 ${totalLessons} 課、${totalVocabs} 筆詞彙）`, "info");
+        }
+      } catch (err) {
+        console.warn("Google Sheets live sync warning:", err);
+        if (isUserTriggered) {
+          showToast(`⚠️ 連線試算表失敗，已使用快取題庫 (${err.message})`, "error");
+        }
+      } finally {
+        if (syncIcon) syncIcon.classList.remove("animate-spin");
+        if (syncBtn) syncBtn.classList.remove("opacity-75");
+      }
+    }
+
+    // 2. 音效系統 (Web Audio API 合成遊戲反饋音效)
+    const AudioEngine = {
+      ctx: null,
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) this.ctx = new AudioContext();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      },
+      playTone(freq, type = 'sine', duration = 0.15, gainVal = 0.2) {
+        try {
+          this.init();
+          if (!this.ctx) return;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+          gain.gain.setValueAtTime(gainVal, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + duration);
+        } catch (e) {
+          console.warn('Audio tone error', e);
+        }
+      },
+      playFlip() {
+        // 微弱柔和點擊微反饋，絕不搶語音人聲 (gain 0.04)
+        this.playTone(600, 'sine', 0.05, 0.04);
+      },
+      playMatch() {
+        // 柔和過關三連音 (總長約 350ms)
+        setTimeout(() => this.playTone(523.25, 'triangle', 0.15, 0.15), 0);
+        setTimeout(() => this.playTone(659.25, 'triangle', 0.15, 0.15), 100);
+        setTimeout(() => this.playTone(783.99, 'triangle', 0.25, 0.18), 200);
+      },
+      playMismatch() {
+        setTimeout(() => this.playTone(240, 'sawtooth', 0.12, 0.10), 0);
+        setTimeout(() => this.playTone(200, 'sawtooth', 0.16, 0.10), 80);
+      },
+      playVictory() {
+        const notes = [523.25, 659.25, 783.99, 1046.5];
+        notes.forEach((freq, idx) => {
+          setTimeout(() => this.playTone(freq, 'triangle', 0.35, 0.25), idx * 120);
+        });
+      }
+    };
+
+    // 3. 真人台語語音播放器 (方案 1：全域獨佔通道，切斷舊音；優先播放試算表指定之最新正確音檔)
+    let currentVocabAudio = null;
+
+    function playVocabAudio(vocab) {
+      if (!vocab) return;
+
+      // 【方案 1 關鍵核心】：若前一個音檔仍在播放，立刻強制中斷歸零，保證絕不雙聲重疊！
+      if (currentVocabAudio) {
+        try {
+          currentVocabAudio.pause();
+          currentVocabAudio.currentTime = 0;
+        } catch (e) {}
+        currentVocabAudio = null;
+      }
+
+      const audio = new Audio();
+      currentVocabAudio = audio;
+
+      // 音訊來源優先順序：
+      // 1. 優先使用試算表最新指定之線上發音網址（soundOnline）
+      // 2. 若離線或無網路，自動回退至本機音檔（soundLocal）
+      const sources = [
+        vocab.soundOnline,
+        vocab.soundLocal,
+        vocab.soundLocal ? vocab.soundLocal.replace(/courses\/[^\/]+\/speak\//, 'speak/') : null
+      ].filter(Boolean);
+
+      let currentSourceIdx = 0;
+
+      function tryPlayNext() {
+        // 若該音訊已被後續的點擊切斷，不再繼續執行
+        if (currentVocabAudio !== audio) return;
+
+        if (currentSourceIdx >= sources.length) {
+          showToast(`⚠️ 提醒：【${vocab.hanji}】在線上與本機皆無音檔！`, "error");
+          return;
+        }
+        audio.src = sources[currentSourceIdx++];
+        audio.play().catch(e => {
+          if (currentVocabAudio === audio) {
+            tryPlayNext();
+          }
+        });
+      }
+
+      audio.onerror = tryPlayNext;
+      tryPlayNext();
+    }
+
+    // 4. 警示 Toast 系統
+    function showToast(msg, type = "info") {
+      const container = document.getElementById("toastContainer");
+      const toast = document.createElement("div");
+      const isError = type === "error";
+      toast.className = `px-4 py-3 rounded-2xl shadow-lg border text-sm font-bold flex items-center gap-2 transform transition-all duration-300 pointer-events-auto ${
+        isError ? 'bg-rose-50 border-rose-300 text-rose-800' : 'bg-sky-50 border-sky-300 text-sky-800'
+      }`;
+      toast.innerHTML = `<span>${isError ? '🚨' : 'ℹ️'}</span><span>${msg}</span>`;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    // 5. 遊戲全域狀態
+    let targetCardCount = 10;
+    let activeCards = [];
+    let flippedCards = [];
+    let matchedPairs = 0;
+    let totalPairs = 5;
+    let flipCount = 0;
+    let timerInterval = null;
+    let secondsElapsed = 0;
+    let isLocked = false;
+
+    function shuffleArray(arr) {
+      const copy = [...arr];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    function startGame() {
+      AudioEngine.init();
+      totalPairs = targetCardCount / 2;
+      matchedPairs = 0;
+      flipCount = 0;
+      secondsElapsed = 0;
+      flippedCards = [];
+      isLocked = false;
+      clearInterval(timerInterval);
+      timerInterval = null;
+
+      document.getElementById("flipsDisplay").innerText = "0";
+      document.getElementById("timerDisplay").innerText = "00:00";
+      document.getElementById("pairsDisplay").innerText = `0 / ${totalPairs}`;
+
+      const shuffledVocab = shuffleArray(VOCABULARY_LIST).slice(0, totalPairs);
+      const deck = [];
+      const types = ['hanji', 'image', 'tailo'];
+
+      shuffledVocab.forEach((vocab) => {
+        const chosenTypes = shuffleArray(types).slice(0, 2);
+        chosenTypes.forEach(t => {
+          deck.push({
+            vocabId: vocab.id,
+            vocab: vocab,
+            displayType: t,
+            isFlipped: false,
+            isMatched: false
+          });
+        });
+      });
+
+      activeCards = shuffleArray(deck);
+
+      document.getElementById("setupView").classList.add("hidden");
+      document.getElementById("gameView").classList.remove("hidden");
+
+      renderCardsGrid();
+    }
+
+    function restartCurrentGame() {
+      startGame();
+    }
+
+    function confirmResetGame() {
+      clearInterval(timerInterval);
+      timerInterval = null;
+      document.getElementById("victoryModal").classList.add("hidden");
+      document.getElementById("gameView").classList.add("hidden");
+      document.getElementById("setupView").classList.remove("hidden");
+    }
+
+    function renderCardsGrid() {
+      const grid = document.getElementById("cardsGrid");
+      grid.innerHTML = "";
+
+      const isOver12 = targetCardCount > 12;
+
+      // 排列版面規則：
+      // 1. 若超過 12 張牌 (如 14 張)：橫向 5 張 × 直向 3 張 (5-5-4)
+      // 2. 若為 10 張牌：橫向 5 張 × 直向 2 張 (5-5)
+      // 3. 若為 12 張牌：橫向 4 張 × 直向 3 張 (4-4-4)
+      if (isOver12) {
+        grid.className = "w-full grid grid-cols-5 gap-2 sm:gap-3 md:gap-3.5 my-2 max-w-5xl mx-auto justify-center";
+      } else if (targetCardCount <= 10) {
+        grid.className = "w-full grid grid-cols-5 gap-2.5 sm:gap-3.5 md:gap-4 my-2 max-w-5xl mx-auto justify-center";
+      } else {
+        grid.className = "w-full grid grid-cols-4 gap-3 md:gap-4 my-2 max-w-4xl mx-auto justify-center";
+      }
+
+      activeCards.forEach((card, index) => {
+        const cardElem = document.createElement("div");
+        cardElem.id = `card-${index}`;
+        // 超過 12 張牌時調整適當高度，確保 3 排在螢幕上一覽無遺
+        const cardHeightClass = isOver12 ? "h-28 sm:h-32 md:h-36" : "h-32 sm:h-36 md:h-40";
+        cardElem.className = `relative ${cardHeightClass} perspective-1000 cursor-pointer card-active`;
+        cardElem.onclick = () => onCardClick(index);
+
+        cardElem.innerHTML = `
+          <div id="card-inner-${index}" class="w-full h-full duration-500 transform-style-3d relative rounded-2xl shadow-sm border border-sky-100 transition-transform">
+            
+            <div class="absolute inset-0 w-full h-full backface-hidden bg-gradient-to-br from-sky-400 to-blue-500 rounded-2xl flex flex-col items-center justify-center text-white border-2 border-sky-300 shadow-md">
+              <span class="${isOver12 ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl'}">🎴</span>
+              <span class="text-[10px] sm:text-xs font-black tracking-widest mt-1 opacity-80">台語翻牌</span>
+            </div>
+
+            <div id="card-front-${index}" class="absolute inset-0 w-full h-full backface-hidden rotate-y-180 bg-white rounded-2xl flex flex-col items-center justify-center p-1.5 sm:p-2 border-2 border-amber-300 shadow-md overflow-hidden">
+              <span class="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                card.displayType === 'hanji' ? 'bg-amber-100 text-amber-700' :
+                card.displayType === 'image' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'
+              }">
+                ${card.displayType === 'hanji' ? '漢字' : card.displayType === 'image' ? '插圖' : '台羅'}
+              </span>
+
+              ${renderCardContent(card, isOver12)}
+
+              <div id="check-${index}" class="absolute bottom-1 right-1 text-emerald-500 font-black text-lg sm:text-xl hidden">
+                ✓
+              </div>
+            </div>
+
+          </div>
+        `;
+
+        grid.appendChild(cardElem);
+      });
+    }
+
+    function renderCardContent(card, isCompact = false) {
+      if (card.displayType === 'hanji') {
+        const textSize = isCompact ? 'text-2xl sm:text-3xl md:text-4xl' : 'text-3xl sm:text-4xl';
+        return `
+          <div class="flex flex-col items-center justify-center text-center">
+            <span class="${textSize} font-black text-slate-800 tracking-wider">
+              ${card.vocab.hanji}
+            </span>
+          </div>
+        `;
+      } else if (card.displayType === 'tailo') {
+        const textSize = isCompact ? 'text-base sm:text-xl md:text-2xl' : 'text-xl sm:text-2xl';
+        return `
+          <div class="flex flex-col items-center justify-center text-center px-1">
+            <span class="${textSize} font-black text-sky-700 tracking-wide break-all">
+              ${card.vocab.tailo}
+            </span>
+          </div>
+        `;
+      } else {
+        const imgMaxH = isCompact ? 'max-h-20 sm:max-h-24 md:max-h-26' : 'max-h-24 sm:max-h-28';
+        return `
+          <div class="w-full h-full flex flex-col items-center justify-center overflow-hidden p-0.5 sm:p-1">
+            <img src="${card.vocab.image}" alt="${card.vocab.hanji}" class="${imgMaxH} object-contain rounded-lg transition-transform hover:scale-105" onerror="if (!this.dataset.fallback) { this.dataset.fallback = '1'; this.src = 'pic/' + this.src.split('/').pop(); } else { this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\' viewBox=\\'0 0 100 100\\'><rect width=\\'100\\' height=\\'100\\' rx=\\'20\\' fill=\\'%23e0f2fe\\'/><text x=\\'50%\\' y=\\'55%\\' dominant-baseline=\\'middle\\' text-anchor=\\'middle\\' font-size=\\'32\\' font-weight=\\'bold\\' fill=\\'%230284c7\\'>${card.vocab.hanji}</text></svg>'; }">
+          </div>
+        `;
+      }
+    }
+
+    function onCardClick(index) {
+      if (isLocked) return;
+      const card = activeCards[index];
+
+      if (card.isMatched || card.isFlipped) return;
+
+      if (!timerInterval) {
+        startTimer();
+      }
+
+      flipCard(index, true);
+      flippedCards.push(index);
+      AudioEngine.playFlip();
+      playVocabAudio(card.vocab);
+
+      if (flippedCards.length === 2) {
+        isLocked = true;
+        flipCount++;
+        document.getElementById("flipsDisplay").innerText = flipCount;
+
+        const idx1 = flippedCards[0];
+        const idx2 = flippedCards[1];
+        const card1 = activeCards[idx1];
+        const card2 = activeCards[idx2];
+
+        if (card1.vocabId === card2.vocabId) {
+          setTimeout(() => {
+            handleMatchSuccess(idx1, idx2, card1.vocab);
+          }, 400);
+        } else {
+          setTimeout(() => {
+            handleMatchFailure(idx1, idx2);
+          }, 1100);
+        }
+      }
+    }
+
+    function flipCard(index, toFaceUp) {
+      const card = activeCards[index];
+      card.isFlipped = toFaceUp;
+      const inner = document.getElementById(`card-inner-${index}`);
+      if (toFaceUp) {
+        inner.classList.add("rotate-y-180");
+      } else {
+        inner.classList.remove("rotate-y-180");
+      }
+    }
+
+    function handleMatchSuccess(idx1, idx2, vocab) {
+      const card1 = activeCards[idx1];
+      const card2 = activeCards[idx2];
+      card1.isMatched = true;
+      card2.isMatched = true;
+
+      AudioEngine.playMatch();
+      // 方案 1 時序協調：延遲 450ms 等叮咚音效圓滿結束後，再播放該語詞發音，雙重強化記憶！
+      setTimeout(() => {
+        playVocabAudio(vocab);
+      }, 450);
+
+      [idx1, idx2].forEach(idx => {
+        const elem = document.getElementById(`card-${idx}`);
+        const front = document.getElementById(`card-front-${idx}`);
+        const check = document.getElementById(`check-${idx}`);
+
+        elem.classList.add("opacity-45", "pointer-events-none", "transition-opacity", "duration-500");
+        front.classList.remove("border-amber-300");
+        front.classList.add("border-emerald-400", "bg-emerald-50/70");
+        check.classList.remove("hidden");
+      });
+
+      matchedPairs++;
+      document.getElementById("pairsDisplay").innerText = `${matchedPairs} / ${totalPairs}`;
+      flippedCards = [];
+      isLocked = false;
+
+      if (matchedPairs === totalPairs) {
+        setTimeout(handleGameVictory, 600);
+      }
+    }
+
+    function handleMatchFailure(idx1, idx2) {
+      AudioEngine.playMismatch();
+      flipCard(idx1, false);
+      flipCard(idx2, false);
+      flippedCards = [];
+      isLocked = false;
+    }
+
+    function startTimer() {
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        secondsElapsed++;
+        const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+        const secs = String(secondsElapsed % 60).padStart(2, '0');
+        document.getElementById("timerDisplay").innerText = `${mins}:${secs}`;
+      }, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+
+    function handleGameVictory() {
+      stopTimer();
+      AudioEngine.playVictory();
+
+      const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+      const secs = String(secondsElapsed % 60).padStart(2, '0');
+      const timeStr = `${mins}:${secs}`;
+
+      document.getElementById("finalTime").innerText = timeStr;
+      document.getElementById("finalFlips").innerText = `${flipCount} 次`;
+
+      let stars = 5;
+      const minPossibleFlips = totalPairs * 2;
+      const extraFlips = flipCount - minPossibleFlips;
+
+      if (extraFlips > 8 || secondsElapsed > 90) {
+        stars = 3;
+      } else if (extraFlips > 4 || secondsElapsed > 60) {
+        stars = 4;
+      } else {
+        stars = 5;
+      }
+
+      const starStr = "⭐".repeat(stars) + "☆".repeat(5 - stars);
+      document.getElementById("starRating").innerText = starStr;
+
+      const feedbacks = {
+        5: "太厲害了！五星滿分！台語聽讀高手！🏆",
+        4: "表現非常優異！熟練度超高！👏",
+        3: "恭喜完成！多練習幾次會更強喔！💪"
+      };
+      document.getElementById("victoryFeedback").innerText = feedbacks[stars] || feedbacks[3];
+
+      initSeatSelect();
+      document.getElementById("saveStatusMsg").classList.add("hidden");
+      document.getElementById("btnSaveScore").disabled = false;
+      document.getElementById("btnSaveScore").classList.remove("opacity-50");
+
+      document.getElementById("victoryModal").classList.remove("hidden");
+    }
+
+    function initSeatSelect() {
+      const select = document.getElementById("seatSelect");
+      select.innerHTML = "";
+      for (let i = 1; i <= 30; i++) {
+        const opt = document.createElement("option");
+        opt.value = i;
+        opt.innerText = `${i} 號同學`;
+        select.appendChild(opt);
+      }
+    }
+
+    const STORAGE_KEY = "TAIW_MATCHING_SCORES_V1";
+
+    function saveScore() {
+      const seat = document.getElementById("seatSelect").value;
+      const timeStr = document.getElementById("finalTime").innerText;
+      const starsCount = (document.getElementById("starRating").innerText.match(/⭐/g) || []).length;
+
+      const newRecord = {
+        seat: Number(seat),
+        stars: starsCount,
+        timeSec: secondsElapsed,
+        timeStr: timeStr,
+        flips: flipCount,
+        date: new Date().toLocaleDateString()
+      };
+
+      const list = getLeaderboardData();
+      list.push(newRecord);
+
+      list.sort((a, b) => {
+        if (b.stars !== a.stars) return b.stars - a.stars;
+        return a.timeSec - b.timeSec;
+      });
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+
+      document.getElementById("saveStatusMsg").classList.remove("hidden");
+      document.getElementById("btnSaveScore").disabled = true;
+      document.getElementById("btnSaveScore").classList.add("opacity-50");
+    }
+
+    function getLeaderboardData() {
+      try {
+        const data = localStorage.getItem(STORAGE_KEY);
+        return data ? JSON.parse(data) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function toggleLeaderboardModal() {
+      const modal = document.getElementById("leaderboardModal");
+      if (modal.classList.contains("hidden")) {
+        renderLeaderboard();
+        modal.classList.remove("hidden");
+      } else {
+        modal.classList.add("hidden");
+      }
+    }
+
+    function renderLeaderboard() {
+      const tbody = document.getElementById("leaderboardTbody");
+      tbody.innerHTML = "";
+      const list = getLeaderboardData().slice(0, 5);
+
+      if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-slate-400">目前尚無紀錄，快來挑戰！</td></tr>`;
+        return;
+      }
+
+      list.forEach((item, idx) => {
+        const tr = document.createElement("tr");
+        tr.className = idx === 0 ? "bg-amber-50/60 font-bold" : "hover:bg-slate-50";
+        tr.innerHTML = `
+          <td class="py-2.5 px-3">
+            ${idx === 0 ? '🥇 1' : idx === 1 ? '🥈 2' : idx === 2 ? '🥉 3' : (idx + 1)}
+          </td>
+          <td class="py-2.5 px-3">${item.seat} 號</td>
+          <td class="py-2.5 px-3 text-amber-500">${'⭐'.repeat(item.stars)}</td>
+          <td class="py-2.5 px-3 font-mono">${item.timeStr}</td>
+          <td class="py-2.5 px-3 text-slate-500">${item.flips} 次</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function clearLeaderboard() {
+      if (confirm("確定要清空班級英雄榜紀錄嗎？")) {
+        localStorage.removeItem(STORAGE_KEY);
+        renderLeaderboard();
+      }
+    }
+
+    function playAgain() {
+      document.getElementById("victoryModal").classList.add("hidden");
+      startGame();
+    }
+
+    function toggleVocabModal() {
+      const modal = document.getElementById("vocabModal");
+      if (modal.classList.contains("hidden")) {
+        renderVocabTable();
+        modal.classList.remove("hidden");
+      } else {
+        modal.classList.add("hidden");
+      }
+    }
+
+    function renderVocabTable() {
+      const tbody = document.getElementById("vocabTbody");
+      tbody.innerHTML = "";
+      VOCABULARY_LIST.forEach(item => {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-50";
+        tr.innerHTML = `
+          <td class="py-2 px-3 font-bold text-slate-400">${item.id}</td>
+          <td class="py-2 px-3 font-black text-slate-800 text-base">${item.hanji}</td>
+          <td class="py-2 px-3 font-bold text-sky-700">${item.tailo}</td>
+          <td class="py-2 px-3">
+            <img src="${item.image}" alt="${item.hanji}" class="w-10 h-10 object-contain rounded border" onerror="if (!this.dataset.fallback) { this.dataset.fallback = '1'; this.src = 'pic/' + this.src.split('/').pop(); } else { this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'40\\' height=\\'40\\'><rect width=\\'40\\' height=\\'40\\' fill=\\'%23f1f5f9\\'/></svg>'; }">
+          </td>
+          <td class="py-2 px-3 text-center">
+            <button onclick="playVocabAudio(VOCABULARY_LIST.find(v => v.id === ${item.id}))" class="px-2 py-1 bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-lg text-xs font-bold transition-colors">
+              🔊 播放
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // 網頁初始化載入
+    window.addEventListener("DOMContentLoaded", () => {
+      initGradeAndLessonSelectors();
+      // 自動背景連線 Google Sheets 同步最新題庫與音檔
+      syncWithGoogleSheets(false);
+    });
+  </script>
+</body>
+</html>
