@@ -1131,6 +1131,7 @@
 
     // 目前選取的課程與詞彙清單
     let currentCourseKey = "kangxuan_g4_l3";
+    let targetCardCount = 12;
     let VOCABULARY_LIST = COURSES_DATA[currentCourseKey]?.vocabularies || [];
 
     // ==========================================
@@ -1287,7 +1288,186 @@
       }
     }
 
-    // 2. 音效系統 (Web Audio API 合成遊戲反饋音效)
+
+    // ==========================================
+    // 課程選單動態初始化與切換邏輯 (依年級分群，再選課別)
+    // ==========================================
+    function initGradeAndLessonSelectors() {
+      const gradeSelect = document.getElementById("gradeSelect");
+      if (!gradeSelect) return;
+
+      const gradeMap = new Map();
+      const grades = [];
+
+      Object.values(COURSES_DATA).forEach(course => {
+        const gid = course.gradeId || course.badge.split("｜")[1]?.trim() || "未分類";
+        const glabel = course.gradeLabel || course.badge.split("｜").slice(0, 2).join(" ｜ ").trim();
+        if (!gradeMap.has(gid)) {
+          gradeMap.set(gid, { id: gid, label: glabel, courses: [] });
+          grades.push(gradeMap.get(gid));
+        }
+        gradeMap.get(gid).courses.push(course);
+      });
+
+      // 依年級/冊別數字大小自然排序 (三年級 -> 四年級 -> 五年級 -> 六年級)
+      const numMap = { "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9 };
+      grades.sort((a, b) => {
+        const getGradeNum = (label) => {
+          const m = label.match(/([一二三四五六\d]+)年級/);
+          if (m) return numMap[m[1]] || parseInt(m[1]) || 99;
+          const mVol = label.match(/第?(\d+)冊/);
+          if (mVol) return parseInt(mVol[1]);
+          return 99;
+        };
+        return getGradeNum(a.label) - getGradeNum(b.label);
+      });
+
+      // 產生年級選單選項
+      gradeSelect.innerHTML = "";
+      grades.forEach(g => {
+        const opt = document.createElement("option");
+        opt.value = g.id;
+        opt.textContent = g.label;
+        gradeSelect.appendChild(opt);
+      });
+
+      // 自動選取目前 currentCourseKey 所屬的年級
+      let activeGradeId = grades[0]?.id;
+      for (const g of grades) {
+        if (g.courses.some(c => c.id === currentCourseKey)) {
+          activeGradeId = g.id;
+          break;
+        }
+      }
+      if (activeGradeId) {
+        gradeSelect.value = activeGradeId;
+        updateLessonOptions(activeGradeId, currentCourseKey);
+      }
+    }
+
+    // 當切換年級時
+    function onGradeSelectChange(gradeId) {
+      updateLessonOptions(gradeId);
+    }
+
+    // 根據選定年級更新課別下拉選單 (依課別數字小到大順序排列：第03課 -> 第04課 -> 第05課)
+    function updateLessonOptions(gradeId, preferredCourseId = null) {
+      const lessonSelect = document.getElementById("lessonSelect");
+      if (!lessonSelect) return;
+      lessonSelect.innerHTML = "";
+
+      const coursesInGrade = Object.values(COURSES_DATA).filter(c => {
+        const gid = c.gradeId || c.badge.split("｜")[1]?.trim() || "未分類";
+        return gid === gradeId;
+      });
+
+      // 按照課別數字排序
+      coursesInGrade.sort((a, b) => {
+        const strA = a.lessonLabel || a.title || "";
+        const strB = b.lessonLabel || b.title || "";
+        const matchA = strA.match(/第?(\d+)課/);
+        const matchB = strB.match(/第?(\d+)課/);
+        const numA = matchA ? parseInt(matchA[1], 10) : 999;
+        const numB = matchB ? parseInt(matchB[1], 10) : 999;
+        if (numA !== numB) {
+          return numA - numB;
+        }
+        return strA.localeCompare(strB, "zh-Hant", { numeric: true });
+      });
+
+      coursesInGrade.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = c.lessonLabel || c.title;
+        lessonSelect.appendChild(opt);
+      });
+
+      let targetId = preferredCourseId;
+      if (!targetId || !coursesInGrade.some(c => c.id === targetId)) {
+        targetId = coursesInGrade[0]?.id;
+      }
+      lessonSelect.value = targetId;
+      if (targetId) {
+        switchCourse(targetId, false);
+      }
+    }
+
+    // 當切換課別時
+    function onLessonSelectChange(courseId) {
+      switchCourse(courseId, false);
+    }
+
+    // 課程切換處理
+    function switchCourse(courseKey, syncSelectors = true) {
+      if (!COURSES_DATA[courseKey]) return;
+      currentCourseKey = courseKey;
+      const course = COURSES_DATA[courseKey];
+      VOCABULARY_LIST = course.vocabularies;
+      
+      const badgeElem = document.getElementById("lessonBadge");
+      if (badgeElem) badgeElem.innerText = course.badge;
+
+      if (syncSelectors) {
+        const gradeSelect = document.getElementById("gradeSelect");
+        const lessonSelect = document.getElementById("lessonSelect");
+        const gid = course.gradeId || course.badge.split("｜")[1]?.trim() || "未分類";
+        if (gradeSelect && gradeSelect.value !== gid) {
+          gradeSelect.value = gid;
+          updateLessonOptions(gid, courseKey);
+        } else if (lessonSelect && lessonSelect.value !== courseKey) {
+          lessonSelect.value = courseKey;
+        }
+      }
+
+      renderCardCountOptions();
+    }
+
+    // 動態生成挑戰牌數按鈕
+    function renderCardCountOptions() {
+      const course = COURSES_DATA[currentCourseKey];
+      const container = document.getElementById("cardCountOptions");
+      if (!container || !course || !course.cardOptions) return;
+      container.innerHTML = "";
+
+      targetCardCount = course.cardOptions[course.cardOptions.length - 1].count;
+
+      course.cardOptions.forEach((opt, idx) => {
+        const isSelected = opt.count === targetCardCount;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.id = `btnCount-${opt.count}`;
+        btn.onclick = () => selectCardCount(opt.count);
+        btn.className = isSelected 
+          ? "py-4 px-6 rounded-2xl border-2 border-sky-400 bg-sky-50 text-sky-800 font-extrabold text-xl shadow-md transition-all hover:scale-102 flex flex-col items-center gap-1"
+          : "py-4 px-6 rounded-2xl border-2 border-slate-200 hover:border-sky-300 bg-white text-slate-700 font-extrabold text-xl shadow-sm transition-all hover:scale-102 flex flex-col items-center gap-1";
+
+        btn.innerHTML = `
+          <span>${opt.label}</span>
+          <span class="text-xs font-normal ${isSelected ? 'text-sky-600' : 'text-slate-500'}">${opt.desc}</span>
+        `;
+        container.appendChild(btn);
+      });
+    }
+
+    function selectCardCount(count) {
+      targetCardCount = count;
+      const course = COURSES_DATA[currentCourseKey];
+      if (!course || !course.cardOptions) return;
+      course.cardOptions.forEach(opt => {
+        const btn = document.getElementById(`btnCount-${opt.count}`);
+        if (!btn) return;
+        const isSelected = opt.count === count;
+        btn.className = isSelected
+          ? "py-4 px-6 rounded-2xl border-2 border-sky-400 bg-sky-50 text-sky-800 font-extrabold text-xl shadow-md transition-all hover:scale-102 flex flex-col items-center gap-1"
+          : "py-4 px-6 rounded-2xl border-2 border-slate-200 hover:border-sky-300 bg-white text-slate-700 font-extrabold text-xl shadow-sm transition-all hover:scale-102 flex flex-col items-center gap-1";
+        const spanDesc = btn.querySelector("span:last-child");
+        if (spanDesc) {
+          spanDesc.className = `text-xs font-normal ${isSelected ? 'text-sky-600' : 'text-slate-500'}`;
+        }
+      });
+    }
+
+        // 2. 音效系統 (Web Audio API 合成遊戲反饋音效)
     const AudioEngine = {
       ctx: null,
       init() {
